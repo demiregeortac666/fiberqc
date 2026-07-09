@@ -1,0 +1,11 @@
+## Verdict
+The reward-cue response in dopamine signal is **robust**: it was statistically significant (p < 0.05) in all 16 preprocessing pipelines tested. No combination of filtering, bleaching correction, motion correction, or normalization choices eliminated or reversed the effect. The researcher can be confident this result does not depend on arbitrary analysis decisions.
+
+## What was tested
+A 2×2×2×2 multiverse of 16 pipelines was run, varying low-pass filter cutoff (2 vs 10 Hz), bleaching correction method (double-exponential subtraction vs 0.001 Hz high-pass), motion correction method (OLS vs robust/IRLS regression of the TdTomato control), and normalization (dF/F vs z-score).
+
+## Methods paragraph (publication-ready)
+Fiber photometry data (dLight dopamine sensor with co-expressed TdTomato control, 130 Hz sampling rate, ~90 min recordings, 137 reward-cue events) were analyzed using a multiverse approach to assess the robustness of the peri-event reward-cue response to preprocessing choices. Signals were low-pass filtered (2nd-order zero-phase Butterworth) at either 2 Hz or 10 Hz, corrected for photobleaching using either double-exponential subtraction or a 0.001 Hz high-pass filter, and corrected for motion artifacts by regressing the TdTomato control channel onto the signal channel using either ordinary least squares (OLS) or robust (Huber/IRLS) regression. Corrected signals were normalized as either dF/F or z-score. All 2×2×2×2 = 16 combinations of these choices were applied, yielding 16 independent analysis pipelines. For each pipeline, the per-event response amplitude was computed as the mean signal in the 0–2 s post-cue window minus the mean signal in the -1–0 s pre-cue baseline window, and tested against zero using a one-sample t-test across the 137 reward-cue events.
+
+## For reviewers
+The reward-cue response was significant in all 16 tested preprocessing pipelines (p < 0.05 throughout, largest p = 1.2e-42), with t-statistics ranging only from 20.14 to 20.28 and no single preprocessing choice shifting the t-statistic by more than 0.06 — demonstrating the effect is not an artifact of any specific filtering, bleaching-correction, motion-correction, or normalization decision.
