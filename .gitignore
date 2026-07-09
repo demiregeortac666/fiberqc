@@ -197,3 +197,8 @@ __pycache__/
 
 # secrets
 .env
+
+#datasets
+datasets/
+batch_summary.csv
+variants/
