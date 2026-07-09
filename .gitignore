@@ -184,3 +184,16 @@ cython_debug/
 citations.db
 papers.jsonl
 papers.csv
+# generated outputs
+*.png
+*.csv
+*.db
+citations.db
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# secrets
+.env
