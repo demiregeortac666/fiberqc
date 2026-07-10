@@ -48,11 +48,20 @@ def _double_exponential(t, const, amp_fast, amp_slow, tau_slow, tau_multiplier):
 
 
 def _fit_double_exp(t, y):
+    """Fit a double-exponential bleaching curve. If the fit fails to converge
+    (can happen on short or heavily-filtered traces), fall back to a smooth
+    low-order polynomial trend so a single hard pipeline never crashes the run."""
     max_sig = np.max(y)
     p0 = [max_sig / 2, max_sig / 4, max_sig / 4, 3600, 0.1]
     bounds = ([0, 0, 0, 600, 0], [max_sig, max_sig, max_sig, 36000, 1])
-    params, _ = curve_fit(_double_exponential, t, y, p0=p0, bounds=bounds, maxfev=2000)
-    return _double_exponential(t, *params)
+    try:
+        params, _ = curve_fit(_double_exponential, t, y, p0=p0,
+                              bounds=bounds, maxfev=5000)
+        return _double_exponential(t, *params)
+    except (RuntimeError, ValueError):
+        # least-squares polynomial trend as a robust fallback baseline
+        coeffs = np.polyfit(t, y, 2)
+        return np.polyval(coeffs, t)
 
 
 # ---------------------------------------------------------------- pipeline
