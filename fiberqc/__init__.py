@@ -18,10 +18,11 @@ reasonable pipelines and tells you whether your conclusion survives.
 from .core import Recording, preprocess, peri_event, peri_event_amplitudes, DEFAULT_AXES as AXES
 from .io import load, load_events
 from .multiverse import multiverse, motion_robustness, MultiverseResult
+from .metrics import METRICS
 
 __version__ = "0.1.0"
 __all__ = [
     "load", "load_events", "multiverse", "motion_robustness",
     "preprocess", "peri_event", "peri_event_amplitudes",
-    "Recording", "MultiverseResult", "AXES",
+    "Recording", "MultiverseResult", "AXES", "METRICS",
 ]

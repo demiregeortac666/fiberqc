@@ -20,6 +20,7 @@ def main():
     ap.add_argument("--events", required=True)
     ap.add_argument("--fs", type=float)
     ap.add_argument("--ppd-dir", default="../photometry_preprocessing")
+    ap.add_argument("--metric", default="mean", choices=["mean","peak","auc"])
     ap.add_argument("--question")
     a = ap.parse_args()
 
@@ -28,7 +29,7 @@ def main():
 
     rec = fqc.load(a.data, events=a.events, fs=a.fs, ppd_dir=a.ppd_dir)
     print(f"loaded {rec}; running 16 pipelines (~1 min)...")
-    result = fqc.multiverse(rec)
+    result = fqc.multiverse(rec, metric=a.metric)
     print(f"{result}\n")
 
     q = a.question or input("Ask about your data> ")

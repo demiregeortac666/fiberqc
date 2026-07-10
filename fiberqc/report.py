@@ -33,9 +33,11 @@ def _prompt(result):
         f"({', '.join(f'{v}={m:.2f}' for v, m in spreads[k]['means'].items())})"
         for k in result.keys)
     p_max = max(r["p"] for r in result.rows)
+    mname = result.metric if isinstance(result.metric, str) else "a custom per-event metric"
     return f"""Interpret this multiverse (specification-curve) analysis for the researcher.
 
 Dataset: {s['dataset']}
+Downstream metric: {mname} (response window {result.response} s vs baseline {result.baseline} s), tested per event against zero with a one-sample t-test.
 Specifications: {s['n_pipelines']} pipelines. Significant (p<0.05): {s['n_significant']}/{s['n_pipelines']}. Verdict: {s['verdict']}.
 t-statistic range: {s['t_min']} to {s['t_max']} (largest p-value: {p_max:.1e}).
 How much each choice moves the effect (t spread if you flip only that axis):
@@ -47,7 +49,7 @@ Write markdown with exactly these sections:
 ## What was tested
 1-2 sentences naming the choices and pipeline count.
 ## Methods paragraph (publication-ready)
-One past-tense paragraph suitable to paste into a paper's Methods.
+One past-tense paragraph suitable to paste into a paper's Methods. Use the metric and windows given above.
 ## For reviewers
 1-2 sentences the researcher can quote, citing the concrete numbers, to show the result is not an artifact of preprocessing choices.
 """

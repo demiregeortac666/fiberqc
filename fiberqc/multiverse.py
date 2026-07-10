@@ -23,12 +23,34 @@ from .core import preprocess, peri_event, peri_event_amplitudes, DEFAULT_AXES
 
 
 class MultiverseResult:
-    """Outcome of running an analysis across every pipeline (a pandas-like object)."""
+    """Outcome of running an analysis across every preprocessing pipeline.
 
-    def __init__(self, rows, keys, recording):
+    Returned by :func:`fiberqc.multiverse` — you rarely build it yourself.
+    Inspect it with :attr:`verdict`, turn it into a table with :meth:`to_df`,
+    plot it with :meth:`spec_curve`, dump an auditable bundle with
+    :meth:`evidence`, or get a written interpretation with :meth:`report` and
+    :meth:`ask`.
+
+    Attributes
+    ----------
+    verdict : str
+        ``"ROBUST"`` (significant in every pipeline), ``"NULL"`` (in none), or
+        ``"FLIP"`` (in some but not all).
+    rows : list of dict
+        One record per pipeline: its parameters plus ``effect``, ``t``, ``p``, ``sig``.
+    keys : list of str
+        The axis names that were varied.
+    """
+
+    def __init__(self, rows, keys, recording, *, metric="mean",
+                 baseline=(-1.0, 0.0), response=(0.0, 2.0), pre=1.0, post=3.0):
         self.rows = rows          # list of dicts: params + effect, t, p, sig
         self.keys = keys          # the axis names
         self.recording = recording
+        self.metric = metric      # name (or callable) of the downstream metric used
+        self.baseline = baseline
+        self.response = response
+        self.pre, self.post = pre, post
 
     # -- summaries ---------------------------------------------------------
     @property
@@ -76,6 +98,19 @@ class MultiverseResult:
 
     # -- specification curve ----------------------------------------------
     def spec_curve(self, path="spec_curve.png"):
+        """Save a specification curve: every pipeline's effect, sorted, with the
+        choices that produced each shown below. The classic multiverse plot.
+
+        Parameters
+        ----------
+        path : str
+            Output image path.
+
+        Returns
+        -------
+        str
+            The path written.
+        """
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
@@ -111,25 +146,44 @@ class MultiverseResult:
 
     # -- auditable evidence bundle ----------------------------------------
     def evidence(self, outdir="variants"):
+        """Write an auditable evidence bundle: for every pipeline, its peri-event
+        plot and the raw per-event metric values, plus a ``manifest.csv``.
+
+        Anyone can open a values file, rerun the test themselves, and reproduce
+        the exact number reported — the analysis is fully inspectable.
+
+        Parameters
+        ----------
+        outdir : str
+            Directory to write the bundle into (created if needed).
+
+        Returns
+        -------
+        str
+            The output directory.
+        """
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        from . import metrics as _metrics
 
         rec = self.recording
         os.makedirs(outdir, exist_ok=True)
+        mname = self.metric if isinstance(self.metric, str) else "custom"
         manifest = []
         for r in self.rows:
             params = {k: r[k] for k in self.keys}
             nm = "_".join(f"{v:g}" if isinstance(v, float) else str(v) for v in params.values())
             trace = preprocess(rec.signal, rec.control, rec.time_s, rec.fs, **params)
-            t_win, W = peri_event(trace, rec.time_s, rec.events)
-            amp = peri_event_amplitudes(trace, rec.time_s, rec.events)
+            t_win, W = peri_event(trace, rec.time_s, rec.events, pre=self.pre, post=self.post)
+            vals = _metrics.compute(self.metric, trace, rec.time_s, rec.events,
+                                    self.baseline, self.response, self.pre, self.post)
 
-            amp_path = os.path.join(outdir, f"{nm}_amplitudes.csv")
+            amp_path = os.path.join(outdir, f"{nm}_{mname}.csv")
             with open(amp_path, "w", newline="") as f:
                 w = csv.writer(f)
-                w.writerow(["event_index", "amplitude"])
-                for i, a in enumerate(amp):
+                w.writerow(["event_index", mname])
+                for i, a in enumerate(vals):
                     w.writerow([i, a])
 
             png = os.path.join(outdir, f"{nm}_periavg.png")
@@ -142,8 +196,9 @@ class MultiverseResult:
             plt.xlabel("Time from event (s)"); plt.ylabel("signal")
             plt.tight_layout(); plt.savefig(png, dpi=110); plt.close()
 
-            manifest.append({**params, "t": round(r["t"], 4), "p": r["p"],
-                             "sig": r["sig"], "amplitudes_file": amp_path, "plot_file": png})
+            manifest.append({**params, "metric": mname, "t": round(r["t"], 4),
+                             "p": r["p"], "sig": r["sig"],
+                             "values_file": amp_path, "plot_file": png})
 
         mpath = os.path.join(outdir, "manifest.csv")
         with open(mpath, "w", newline="") as f:
@@ -167,8 +222,49 @@ class MultiverseResult:
 
 
 # ---------------------------------------------------------------- engine
-def multiverse(recording, axes=None):
-    """Run the analysis through every pipeline. Returns a MultiverseResult."""
+def multiverse(recording, axes=None, *, metric="mean",
+               baseline=(-1.0, 0.0), response=(0.0, 2.0), pre=1.0, post=3.0):
+    """Run the analysis across every preprocessing pipeline.
+
+    Builds the multiverse of pipelines (every combination of the values in
+    ``axes``), computes the chosen downstream ``metric`` per event in each, and
+    tests it against zero. The result reports whether the effect is *robust*
+    (holds in every pipeline) or *choice-sensitive*.
+
+    Parameters
+    ----------
+    recording : Recording
+        A recording with events, from :func:`fiberqc.load`.
+    axes : dict, optional
+        ``{knob: [values]}`` to explore. Supported knobs are the
+        :func:`fiberqc.preprocess` arguments: ``low_pass``, ``median_filter``,
+        ``bleaching``, ``motion``, ``normalization``. Defaults to
+        :data:`fiberqc.AXES` (the four choices the reference primer discusses).
+    metric : {"mean", "peak", "auc"} or callable, optional
+        Downstream metric. Built-ins compare a response window to a baseline
+        window. A callable ``metric(t_win, W) -> per-event array`` lets you
+        define your own, where ``W`` is the ``(n_events, n_samples)`` peri-event
+        matrix. Return values where 0 means "no effect". Default ``"mean"``.
+    baseline, response : tuple of float, optional
+        ``(start, stop)`` in seconds for the pre- and post-event windows.
+    pre, post : float, optional
+        Seconds of trace to align around each event.
+
+    Returns
+    -------
+    MultiverseResult
+        Holds every pipeline's outcome, with ``.verdict``, ``.spec_curve()``,
+        ``.evidence()``, ``.report()`` and ``.ask()``.
+
+    Examples
+    --------
+    >>> result = fqc.multiverse(rec)
+    >>> result.verdict
+    'ROBUST'
+    >>> result = fqc.multiverse(rec, metric="peak", response=(0, 1))
+    >>> result = fqc.multiverse(rec, axes={"low_pass": [1, 5, 10], "motion": ["OLS", "robust"]})
+    """
+    from . import metrics as _metrics
     if recording.events is None:
         raise ValueError("This recording has no events; use fiberqc.motion_robustness().")
     axes = axes or DEFAULT_AXES
@@ -178,12 +274,14 @@ def multiverse(recording, axes=None):
         params = dict(zip(keys, combo))
         trace = preprocess(recording.signal, recording.control,
                            recording.time_s, recording.fs, **params)
-        amp = peri_event_amplitudes(trace, recording.time_s, recording.events)
-        t, p = ttest_1samp(amp, 0.0)
-        rows.append({**params, "effect": float(amp.mean()),
+        vals = _metrics.compute(metric, trace, recording.time_s, recording.events,
+                                baseline, response, pre, post)
+        t, p = ttest_1samp(vals, 0.0)
+        rows.append({**params, "effect": float(np.mean(vals)),
                      "t": float(t), "p": float(p), "sig": bool(p < 0.05)})
     rows.sort(key=lambda r: r["t"])
-    return MultiverseResult(rows, keys, recording)
+    return MultiverseResult(rows, keys, recording, metric=metric,
+                            baseline=baseline, response=response, pre=pre, post=post)
 
 
 def motion_robustness(recording, axes=None):
