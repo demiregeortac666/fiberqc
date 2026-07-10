@@ -2,11 +2,6 @@
   <img src="logo.svg" alt="fiberqc" width="440">
 </p>
 
-
-<p align="center">
-  <img src="logo.svg" alt="fiberqc" width="440">
-</p>
-
 <p align="center">
   <img src="https://github.com/demiregeortac666/fiberqc/actions/workflows/tests.yml/badge.svg" alt="tests">
   <img src="https://github.com/demiregeortac666/fiberqc/actions/workflows/docs.yml/badge.svg" alt="docs">
