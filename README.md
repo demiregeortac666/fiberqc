@@ -46,41 +46,39 @@ Two labs, two sensors, two acquisition systems (pyPhotometry 130 Hz, TDT 1017 Hz
 ```bash
 conda env create -f environment.yml
 conda activate fp-robust
+pip install -e .                        # makes `import fiberqc` available
 export ANTHROPIC_API_KEY=sk-ant-...     # for the Claude interpretation layer
 ```
 
-**Ask a question in plain language:**
+**As a library** (the main interface):
+
+```python
+import fiberqc as fqc
+
+rec = fqc.load("recording.ppd", events="events.npy")
+result = fqc.multiverse(rec)
+
+print(result)                    # MultiverseResult('...': ROBUST, 16/16 significant, t=20.1-20.3)
+result.verdict                   # "ROBUST" | "FLIP" | "NULL"
+result.spec_curve("spec.png")    # specification curve
+result.evidence("out/")          # per-pipeline plots + raw amplitudes + manifest
+print(result.report())           # Claude: verdict + methods paragraph + reviewer statement
+print(result.ask("Should I use OLS or robust motion correction?"))
+
+# recordings without events (e.g. artifact tanks):
+fqc.motion_robustness(rec)       # event-free robustness verdict
+```
+
+**As a command line** (natural-language and batch):
 
 ```bash
-python ask.py --data path/to/recording.ppd --events path/to/events.npy \
+python ask.py --data rec.ppd --events ev.npy \
               --question "Is my reward response real, or a preprocessing artifact?"
+
+python batch.py datasets/        # every recording in a folder -> batch_summary.csv
 ```
 
-**Run the full multiverse + specification curve:**
-
-```bash
-python multiverse.py          # -> spec_curve.png, multiverse_results.csv
-```
-
-**Generate the auditable evidence bundle:**
-
-```bash
-python evidence.py            # -> variants/ (16 plots + 16 raw-amplitude CSVs) + manifest.csv
-```
-
-**Get the Claude report (verdict + methods paragraph + reviewer statement):**
-
-```bash
-python claude_layer.py        # -> robustness_report.md
-```
-
-**Batch a whole folder of recordings:**
-
-```bash
-python batch.py datasets/     # -> batch_summary.csv (robust vs sensitive per dataset)
-```
-
-Recordings can be pyPhotometry `.ppd` or any two-channel CSV (signal + control); see `data_io.py`. Converters for GuPPy (`guppy_to_csv.py`) and TDT tanks (`tdt_to_csv.py`) are included.
+Recordings can be pyPhotometry `.ppd` or any two-channel CSV (signal + control). Converters for GuPPy (`guppy_to_csv.py`) and TDT tanks (`tdt_to_csv.py`) are included.
 
 ---
 
@@ -107,6 +105,5 @@ All validation uses public, published data:
 
 ## Roadmap
 
-- Package the tool as an importable library (`import fiberqc as fqc`).
 - User-defined multiverse axes from the command line.
 - Scale the engine from single-recording QC to a literature-wide characterization of preprocessing sensitivity.
