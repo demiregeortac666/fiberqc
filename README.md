@@ -9,6 +9,8 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license">
 </p>
 
+**Quality control for fiber photometry: is your result real, or an artifact of the preprocessing choices you didn't know you were making?**
+
 Every fiber photometry analysis makes a chain of preprocessing decisions — filter cutoff, bleaching correction, motion regression, normalization. Each is defensible, each is somewhat arbitrary, and a different choice can change the answer. Almost nobody checks. The field's own reference primer (Simpson, Akam, Patriarchi et al., *Neuron* 2024) explicitly notes that there is no systematic comparison of these choices and no established best practice.
 
 `fiberqc` runs your analysis through the whole space of reasonable pipelines at once and tells you whether your conclusion survives — a robustness check you can put in front of a reviewer.
