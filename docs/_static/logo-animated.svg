@@ -1,0 +1,35 @@
+<svg width="560" height="165" viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="fiberqc animated logo">
+  <title>fiberqc</title>
+  <style>
+    @keyframes fqc-draw { to { stroke-dashoffset: 0; } }
+    @keyframes fqc-fadein { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fqc-pop { 0%{opacity:0;transform:scale(0);} 70%{transform:scale(1.3);} 100%{opacity:1;transform:scale(1);} }
+    .fqc-ray { stroke-dasharray: 260; stroke-dashoffset: 260; animation: fqc-draw 0.7s ease-out forwards; }
+    .fqc-r1{animation-delay:0s}.fqc-r2{animation-delay:.1s}.fqc-r3{animation-delay:.2s}
+    .fqc-r4{animation-delay:.3s}.fqc-r5{animation-delay:.4s}.fqc-r6{animation-delay:.5s}
+    .fqc-node{transform-box:fill-box;transform-origin:center;opacity:0;animation:fqc-pop .4s ease-out 1s forwards;}
+    .fqc-wave{stroke-dasharray:180;stroke-dashoffset:180;animation:fqc-draw .8s ease-out 1.2s forwards;}
+    .fqc-word{opacity:0;animation:fqc-fadein .7s ease-out 1.9s forwards;}
+  </style>
+  <defs>
+    <linearGradient id="fqcAnim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E40303"/><stop offset="0.2" stop-color="#FF8C00"/>
+      <stop offset="0.4" stop-color="#F2C200"/><stop offset="0.6" stop-color="#008026"/>
+      <stop offset="0.8" stop-color="#004DFF"/><stop offset="1" stop-color="#750787"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="3.4" stroke-linecap="round">
+    <path class="fqc-ray fqc-r1" d="M18,34 C120,34 150,86 184,86" stroke="#E40303"/>
+    <path class="fqc-ray fqc-r2" d="M18,55 C122,55 152,86 184,86" stroke="#FF8C00"/>
+    <path class="fqc-ray fqc-r3" d="M18,76 C128,76 156,86 184,86" stroke="#F2C200"/>
+    <path class="fqc-ray fqc-r4" d="M18,97 C128,97 156,86 184,86" stroke="#008026"/>
+    <path class="fqc-ray fqc-r5" d="M18,118 C122,118 152,86 184,86" stroke="#004DFF"/>
+    <path class="fqc-ray fqc-r6" d="M18,139 C120,139 150,86 184,86" stroke="#750787"/>
+  </g>
+  <circle class="fqc-node" cx="184" cy="86" r="6.5" fill="#0f172a"/>
+  <path class="fqc-wave" d="M184,86 L199,87 C210,88 211,46 224,43 C239,40 244,83 270,87"
+        fill="none" stroke="url(#fqcAnim)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text class="fqc-word" x="300" y="107"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="60" font-weight="600" fill="#0f172a">fiber<tspan fill="#750787">qc</tspan></text>
+</svg>

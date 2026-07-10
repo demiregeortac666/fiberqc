@@ -1,5 +1,10 @@
-fiberqc
-=======
+.. title:: fiberqc
+
+.. raw:: html
+
+   <p align="center">
+     <img src="_static/logo-animated.svg" alt="fiberqc" width="440">
+   </p>
 
 **Quality control for fiber photometry: is your result real, or an artifact of
 the preprocessing choices you didn't know you were making?**
