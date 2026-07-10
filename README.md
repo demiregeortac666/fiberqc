@@ -1,3 +1,6 @@
+<p align="center">
+  <img src="logo.svg" alt="fiberqc" width="440">
+</p>
 # fiberqc
 
 **Quality control for fiber photometry: is your result real, or an artifact of the preprocessing choices you didn't know you were making?**

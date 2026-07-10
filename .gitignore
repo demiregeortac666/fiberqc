@@ -202,3 +202,8 @@ __pycache__/
 datasets/
 batch_summary.csv
 variants/
+*.png
+
+*.egg-info/
+build/
+dist/

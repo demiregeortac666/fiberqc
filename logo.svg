@@ -1,0 +1,29 @@
+<svg width="560" height="150" viewBox="0 0 560 150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="fiberqc logo">
+  <title>fiberqc</title>
+  <desc>Six spectral lines converge to a point and emerge as a single signal transient, beside the fiberqc wordmark.</desc>
+  <defs>
+    <linearGradient id="fqcSpec" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E40303"/>
+      <stop offset="0.2" stop-color="#FF8C00"/>
+      <stop offset="0.4" stop-color="#F2C200"/>
+      <stop offset="0.6" stop-color="#008026"/>
+      <stop offset="0.8" stop-color="#004DFF"/>
+      <stop offset="1" stop-color="#750787"/>
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke-width="3.4" stroke-linecap="round">
+    <path d="M18,34 C120,34 150,86 184,86" stroke="#E40303"/>
+    <path d="M18,55 C122,55 152,86 184,86" stroke="#FF8C00"/>
+    <path d="M18,76 C128,76 156,86 184,86" stroke="#F2C200"/>
+    <path d="M18,97 C128,97 156,86 184,86" stroke="#008026"/>
+    <path d="M18,118 C122,118 152,86 184,86" stroke="#004DFF"/>
+    <path d="M18,139 C120,139 150,86 184,86" stroke="#750787"/>
+  </g>
+  <circle cx="184" cy="86" r="6.5" fill="#0f172a"/>
+  <path d="M184,86 L199,87 C210,88 211,46 224,43 C239,40 244,83 270,87"
+        fill="none" stroke="url(#fqcSpec)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="300" y="107" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+        font-size="60" font-weight="600" fill="#0f172a">fiber<tspan fill="#750787">qc</tspan></text>
+</svg>
