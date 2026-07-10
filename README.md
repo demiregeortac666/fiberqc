@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license">
 </p>
 
-📖 **[API Documentation](https://demiregeortac666.github.io/fiberqc/)**
+**[API Documentation](https://demiregeortac666.github.io/fiberqc/)**
 **Quality control for fiber photometry: is your result real, or an artifact of the preprocessing choices you didn't know you were making?**
 
 Every fiber photometry analysis makes a chain of preprocessing decisions — filter cutoff, bleaching correction, motion regression, normalization. Each is defensible, each is somewhat arbitrary, and a different choice can change the answer. Almost nobody checks. The field's own reference primer (Simpson, Akam, Patriarchi et al., *Neuron* 2024) explicitly notes that there is no systematic comparison of these choices and no established best practice.
