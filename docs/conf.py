@@ -34,6 +34,7 @@ html_theme = "pydata_sphinx_theme"
 html_title = "fiberqc"
 html_static_path = ["_static"]
 html_logo = "_static/logo.svg"
+html_favicon = "_static/logo-mark.svg"
 
 html_theme_options = {
     "github_url": "https://github.com/demiregeortac666/fiberqc",

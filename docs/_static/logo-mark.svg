@@ -1,0 +1,26 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="fiberqc mark">
+  <title>fiberqc mark</title>
+  <desc>Six spectral lines converge to a point and emerge as a single signal transient.</desc>
+  <defs>
+    <linearGradient id="fqcSpecSq" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E40303"/>
+      <stop offset="0.2" stop-color="#FF8C00"/>
+      <stop offset="0.4" stop-color="#F2C200"/>
+      <stop offset="0.6" stop-color="#008026"/>
+      <stop offset="0.8" stop-color="#004DFF"/>
+      <stop offset="1" stop-color="#750787"/>
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke-width="6.5" stroke-linecap="round">
+    <path d="M28,70 C110,70 132,128 150,128" stroke="#E40303"/>
+    <path d="M28,93 C114,93 136,128 150,128" stroke="#FF8C00"/>
+    <path d="M28,116 C120,116 140,128 150,128" stroke="#F2C200"/>
+    <path d="M28,140 C120,140 140,128 150,128" stroke="#008026"/>
+    <path d="M28,163 C114,163 136,128 150,128" stroke="#004DFF"/>
+    <path d="M28,186 C110,186 132,128 150,128" stroke="#750787"/>
+  </g>
+  <circle cx="150" cy="128" r="9" fill="#0f172a"/>
+  <path d="M150,128 L170,130 C185,132 187,74 204,70 C221,66 227,124 244,129"
+        fill="none" stroke="url(#fqcSpecSq)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
