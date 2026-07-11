@@ -279,3 +279,36 @@ def test_t_is_d_times_sqrt_n(clean_recording):
         expected_t = row["d"] * np.sqrt(row["n_events"])
         assert np.isclose(row["t"], expected_t, rtol=1e-6), (
             f"t={row['t']:.4f} but d*sqrt(n)={expected_t:.4f}")
+
+
+# ------------------------------------------------ the researcher's own pipeline
+def test_my_pipeline_is_folded_into_the_space(clean_recording):
+    """A researcher's actual parameters may not be among our defaults. Declaring
+    them must add that specification to the multiverse, not silently ignore it —
+    otherwise the curve says "the choice matters" without ever locating the
+    choice the researcher actually made."""
+    axes = {"low_pass": [2.0, 10.0], "bleaching": ["double_exp"],
+            "motion": ["OLS"], "normalization": ["dFF"]}
+    mine = {"low_pass": 4.0, "bleaching": "double_exp",
+            "motion": "OLS", "normalization": "dFF"}
+    r = fqc.multiverse(clean_recording, axes=axes, my_pipeline=mine)
+    assert r.n == 3                       # 4 Hz was added to the two defaults
+    assert r.my_row is not None
+    assert r.my_row["low_pass"] == 4.0
+
+
+def test_where_do_i_stand_counts_disagreement(clean_recording):
+    axes = {"low_pass": [2.0, 10.0], "bleaching": ["double_exp", "highpass"],
+            "motion": ["OLS"], "normalization": ["dFF"]}
+    mine = {"low_pass": 2.0, "bleaching": "double_exp",
+            "motion": "OLS", "normalization": "dFF"}
+    stand = fqc.multiverse(clean_recording, axes=axes, my_pipeline=mine).where_do_i_stand()
+    assert stand["n_alternatives"] == 3
+    assert stand["agree"] + stand["opposite_sign"] + stand["not_significant"] == 3
+    assert stand["my_significant"] is True
+
+
+def test_my_pipeline_rejects_unknown_knobs(clean_recording):
+    with pytest.raises(ValueError, match="not in axes"):
+        fqc.multiverse(clean_recording, axes=_OLS_AXES,
+                       my_pipeline={"airPLS_lambda": 1e5})

@@ -42,8 +42,9 @@ class MultiverseResult:
         The axis names that were varied.
     """
 
-    def __init__(self, rows, keys, recording, *, metric="mean",
+    def __init__(self, rows, keys, recording, *, my_pipeline=None, metric="mean",
                  baseline=(-1.0, 0.0), response=(0.0, 2.0), pre=1.0, post=3.0):
+        self.my_pipeline = my_pipeline
         self.rows = rows          # list of dicts: params + effect, t, p, sig
         self.keys = keys          # the axis names
         self.recording = recording
@@ -93,6 +94,61 @@ class MultiverseResult:
         return (min(es), max(es))
 
     @property
+    def my_row(self):
+        """The specification the researcher actually ran, if they declared one."""
+        for r in self.rows:
+            if r.get("mine"):
+                return r
+        return None
+
+    def where_do_i_stand(self):
+        """How the researcher's own pipeline compares with every alternative.
+
+        A multiverse that only says "the choice matters" is not actionable. What a
+        researcher needs is: *my* pipeline says this; of the reasonable
+        alternatives, this many agree with me, and this many do not.
+
+        Returns a dict, or None if no ``my_pipeline`` was declared.
+        """
+        mine = self.my_row
+        if mine is None:
+            return None
+        others = [r for r in self.rows if not r.get("mine")]
+        same_sign = [r for r in others
+                     if r["sig"] and np.sign(r["d"]) == np.sign(mine["d"])]
+        opposite = [r for r in others
+                    if r["sig"] and np.sign(r["d"]) != np.sign(mine["d"])]
+        null = [r for r in others if not r["sig"]]
+        return {
+            "my_effect": mine["effect"],
+            "my_d": mine["d"],
+            "my_t": mine["t"],
+            "my_p": mine["p"],
+            "my_significant": mine["sig"],
+            "n_alternatives": len(others),
+            "agree": len(same_sign),
+            "opposite_sign": len(opposite),
+            "not_significant": len(null),
+            "d_if_i_had_chosen_otherwise": (min(r["d"] for r in others),
+                                            max(r["d"] for r in others)) if others else None,
+        }
+
+    @property
+    def culprit(self):
+        """The axis whose choice moves the effect size most — the knob that
+        actually decides your result. Returns (axis_name, spread_in_d)."""
+        best, best_spread = None, -1.0
+        for k in self.keys:
+            by_val = {}
+            for r in self.rows:
+                by_val.setdefault(r[k], []).append(r["d"])
+            means = [np.mean(v) for v in by_val.values()]
+            spread = float(max(means) - min(means)) if len(means) > 1 else 0.0
+            if spread > best_spread:
+                best, best_spread = k, spread
+        return best, best_spread
+
+    @property
     def d_range(self):
         ds = [r["d"] for r in self.rows if not np.isnan(r["d"])]
         return (min(ds), max(ds)) if ds else (np.nan, np.nan)
@@ -123,25 +179,34 @@ class MultiverseResult:
         lo, hi = self.t_range
         dlo, dhi = self.d_range
         warn = "" if self.signs_agree else ", SIGN FLIPS"
+        mine = self.my_row
+        anchor = f", yours d={mine['d']:.2f}" if mine else ""
         return (f"MultiverseResult({self.recording.name!r}: {self.verdict}, "
                 f"{self.n_significant}/{self.n} significant, "
-                f"d={dlo:.2f}..{dhi:.2f}, t={lo:.1f}..{hi:.1f}{warn})")
+                f"d={dlo:.2f}..{dhi:.2f}{anchor}, t={lo:.1f}..{hi:.1f}{warn})")
 
     # -- specification curve ----------------------------------------------
-    def spec_curve(self, path="spec_curve.png"):
-        """Save a specification curve: every pipeline's **effect size**, sorted,
-        with the choices that produced it shown below.
+    def spec_curve(self, path="spec_curve.png", dpi=200, figsize=(9, 9)):
+        """Save a publication-quality specification curve.
 
-        The magnitude is the top panel, not the t-statistic. A t-statistic mixes
-        magnitude with variability and grows with the number of events, so a
-        trivially small effect measured over many trials can look overwhelming
-        (Chen et al., 2017). The t-statistic is still shown, in its own panel,
-        as the evidence *for* the effect — not as the effect.
+        The top panel is the **effect size**, not the t-statistic. A t mixes
+        magnitude with variability and grows with the square root of the event
+        count, so a trivially small effect measured over many events can look
+        overwhelming (Chen et al., 2017). The t-statistic is shown separately, as
+        the evidence *for* the effect rather than as the effect.
+
+        The bottom panel shows which choices produced each specification. The
+        axis that moves the result most is highlighted — that is the knob your
+        conclusion actually hangs on.
 
         Parameters
         ----------
         path : str
-            Output image path.
+            Output image path (``.png``, ``.pdf`` and ``.svg`` all work).
+        dpi : int, optional
+            Resolution. 200 is fine for a figure panel; use 300+ for print.
+        figsize : tuple, optional
+            Figure size in inches.
 
         Returns
         -------
@@ -151,55 +216,130 @@ class MultiverseResult:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        from matplotlib.lines import Line2D
+
+        POS   = "#1b6ca8"   # effect in one direction
+        NEG   = "#d1495b"   # effect in the other
+        NS    = "#b8bfc7"   # not significant
+        INK   = "#2b2f33"
+        FAINT = "#e3e6e9"
+        HL    = "#e07a20"   # the axis that decides the result
 
         rows = sorted(self.rows, key=lambda r: r["d"])
         x = np.arange(len(rows))
         ds = np.array([r["d"] for r in rows])
-        eff = np.array([r["effect"] for r in rows])
         ts = np.array([r["t"] for r in rows])
         sig = np.array([r["sig"] for r in rows])
-        options = [(k, v) for k in self.keys for v in sorted({r[k] for r in rows}, key=str)]
+        culprit_axis, spread = self.culprit
+
+        colours = [NS if not s else (POS if d >= 0 else NEG)
+                   for s, d in zip(sig, ds)]
+
+        options = [(k, v) for k in self.keys
+                   for v in sorted({r[k] for r in rows}, key=str)]
 
         fig, (ax0, ax1, ax2) = plt.subplots(
-            3, 1, figsize=(10, 10), sharex=True,
-            gridspec_kw={"height_ratios": [2, 1.4, 3]})
+            3, 1, figsize=figsize, sharex=True,
+            gridspec_kw={"height_ratios": [3, 1.3, 2.6], "hspace": 0.12})
 
-        # -- magnitude (the headline)
-        ax0.axhline(0, color="gray", lw=1)
-        ax0.scatter(x[sig], ds[sig], c="#1a7f37", s=42, label="p < .05", zorder=3)
-        ax0.scatter(x[~sig], ds[~sig], c="#cf222e", s=42, label="not significant", zorder=3)
-        ax0.set_ylabel("effect size (Cohen's d)")
-        flip = "" if self.signs_agree else "  —  SIGN FLIPS ACROSS PIPELINES"
-        ax0.set_title(f"Specification curve — {self.recording.name} "
-                      f"({self.verdict}){flip}", fontsize=11)
-        ax0.legend(loc="upper left", fontsize=9)
+        for ax in (ax0, ax1, ax2):
+            ax.spines[["top", "right"]].set_visible(False)
+            ax.spines[["left", "bottom"]].set_color(INK)
+            ax.tick_params(colors=INK, labelsize=9)
 
-        # raw magnitude on a twin axis so the units are not lost
-        ax0b = ax0.twinx()
-        ax0b.plot(x, eff, color="#8250df", lw=1, alpha=0.55)
-        ax0b.set_ylabel("raw effect (metric units)", color="#8250df", fontsize=9)
-        ax0b.tick_params(axis="y", labelcolor="#8250df", labelsize=8)
+        # ---- effect size: the headline
+        ax0.axhline(0, color=INK, lw=1, zorder=1)
+        ax0.grid(axis="y", color=FAINT, lw=0.7, zorder=0)
+        ax0.set_axisbelow(True)
+        ax0.scatter(x, ds, c=colours, s=54, zorder=3,
+                    edgecolors="white", linewidths=0.8)
 
-        # -- evidence, kept separate from magnitude
-        ax1.axhline(0, color="gray", lw=1)
-        ax1.axhline(1.98, color="gray", ls="--", lw=0.8)
-        ax1.axhline(-1.98, color="gray", ls="--", lw=0.8)
-        ax1.scatter(x[sig], ts[sig], c="#1a7f37", s=26, zorder=3)
-        ax1.scatter(x[~sig], ts[~sig], c="#cf222e", s=26, zorder=3)
-        ax1.set_ylabel("evidence (t)", fontsize=9)
+        mine_i = [i for i, r in enumerate(rows) if r.get("mine")]
+        if mine_i:
+            i = mine_i[0]
+            ax0.axvline(i, color=INK, lw=1, ls=(0, (2, 2)), zorder=1, alpha=0.55)
+            ax0.scatter([i], [ds[i]], s=190, facecolors="none",
+                        edgecolors=INK, linewidths=1.6, zorder=4)
+            ax0.annotate("your pipeline", xy=(i, ds[i]),
+                         xytext=(0, 16), textcoords="offset points",
+                         ha="center", fontsize=8.5, color=INK, fontweight="bold")
+        ax0.set_ylabel("effect size  (Cohen's d)", fontsize=10, color=INK)
 
-        # -- which choices produced each specification
+        handles = [Line2D([], [], marker="o", ls="", mfc=POS, mec="white", ms=8,
+                          label="significant, positive"),
+                   Line2D([], [], marker="o", ls="", mfc=NEG, mec="white", ms=8,
+                          label="significant, negative"),
+                   Line2D([], [], marker="o", ls="", mfc=NS, mec="white", ms=8,
+                          label="not significant")]
+        ax0.legend(handles=handles, loc="upper left", frameon=False, fontsize=8.5)
+
+        title = f"{self.recording.name}  —  {self.verdict}"
+        ax0.set_title(title, fontsize=12.5, color=INK, loc="left", pad=34,
+                      fontweight="bold")
+
+        # One headline, and only the thing that should alarm you is in alarm colour.
+        stand = self.where_do_i_stand()
+        if stand and stand["opposite_sign"]:
+            head = (f"{stand['opposite_sign']} of {stand['n_alternatives']} reasonable "
+                    f"alternatives reverse your result")
+            head_c = NEG
+        elif not self.signs_agree:
+            head = "pipelines disagree on the direction of the effect"
+            head_c = NEG
+        elif stand:
+            head = (f"{stand['agree']}/{stand['n_alternatives']} alternatives agree "
+                    f"with your pipeline")
+            head_c = "#5b6470"
+        else:
+            head = f"{self.n_significant}/{self.n} specifications significant"
+            head_c = "#5b6470"
+        ax0.annotate(head, xy=(0, 1.105), xycoords="axes fraction",
+                     fontsize=9.5, color=head_c, fontweight="bold")
+
+        # Quiet context, well out of the way.
+        ctx = (f"{self.n_significant}/{self.n} significant   ·   "
+               f"the choice that decides it: {culprit_axis}")
+        ax0.annotate(ctx, xy=(0, 1.035), xycoords="axes fraction",
+                     fontsize=8.5, color="#8a929b")
+
+        # ---- evidence, kept apart from magnitude
+        ax1.axhline(0, color=INK, lw=0.9)
+        for y in (1.98, -1.98):
+            ax1.axhline(y, color=NS, ls=(0, (4, 3)), lw=0.8)
+        ax1.scatter(x, ts, c=colours, s=26, zorder=3,
+                    edgecolors="white", linewidths=0.6)
+        ax1.set_ylabel("evidence\n(t-statistic)", fontsize=9, color="#5b6470")
+        ax1.annotate("p = .05", xy=(len(x) - 0.5, 2.1), fontsize=7.5,
+                     color="#8a929b", ha="right")
+
+        # ---- which choices produced each specification
         for row_i, (k, v) in enumerate(options):
             used = np.array([rows[c][k] == v for c in range(len(rows))])
-            ax2.scatter(x[used], np.full(used.sum(), row_i), c="#24292f", s=22)
-            ax2.scatter(x[~used], np.full((~used).sum(), row_i), c="#d0d7de", s=6)
-        ax2.set_yticks(range(len(options)))
-        ax2.set_yticklabels([f"{k} = {v}" for k, v in options], fontsize=9)
-        ax2.set_xlabel("specification (sorted by effect size)")
-        ax2.invert_yaxis()
+            on_colour = HL if k == culprit_axis else INK
+            size = 30 if k == culprit_axis else 22
+            ax2.scatter(x[~used], np.full((~used).sum(), row_i),
+                        c=FAINT, s=8, zorder=2)
+            ax2.scatter(x[used], np.full(used.sum(), row_i),
+                        c=on_colour, s=size, zorder=3)
 
-        plt.tight_layout()
-        plt.savefig(path, dpi=120)
+        labels = []
+        for k, v in options:
+            lab = f"{k} = {v}"
+            labels.append(lab)
+        ax2.set_yticks(range(len(options)))
+        ax2.set_yticklabels(labels, fontsize=8.5)
+        for tick, (k, _) in zip(ax2.get_yticklabels(), options):
+            if k == culprit_axis:
+                tick.set_color(HL)
+                tick.set_fontweight("bold")
+        ax2.set_xlabel("specification, ordered by effect size", fontsize=10, color=INK)
+        ax2.set_ylim(len(options) - 0.5, -0.5)
+        ax2.set_xlim(-0.8, len(x) - 0.2)
+        ax2.grid(axis="x", color=FAINT, lw=0.6, zorder=0)
+        ax2.set_axisbelow(True)
+
+        fig.align_ylabels([ax0, ax1, ax2])
+        plt.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white")
         plt.close()
         return path
 
@@ -283,7 +423,7 @@ class MultiverseResult:
 
 
 # ---------------------------------------------------------------- engine
-def multiverse(recording, axes=None, *, metric="mean",
+def multiverse(recording, axes=None, *, my_pipeline=None, metric="mean",
                baseline=(-1.0, 0.0), response=(0.0, 2.0), pre=1.0, post=3.0):
     """Run the analysis across every preprocessing pipeline.
 
@@ -328,10 +468,25 @@ def multiverse(recording, axes=None, *, metric="mean",
     from . import metrics as _metrics
     if recording.events is None:
         raise ValueError("This recording has no events; use fiberqc.motion_robustness().")
-    axes = axes or DEFAULT_AXES
+    axes = dict(axes or DEFAULT_AXES)
     keys = list(axes)
+
+    # The pipeline the researcher actually ran is the anchor: without it, a
+    # multiverse says "the choice matters" but never "and here is where YOUR
+    # choice lands". Fold its values into the axes so it is one of the
+    # specifications, then mark it in the result.
+    if my_pipeline:
+        unknown = set(my_pipeline) - set(keys)
+        if unknown:
+            raise ValueError(f"my_pipeline has knobs that are not in axes: {sorted(unknown)}. "
+                             f"Add them to axes, or use the same names: {keys}")
+        for k, v in my_pipeline.items():
+            if v not in axes[k]:
+                axes[k] = list(axes[k]) + [v]
+
+    combos = list(itertools.product(*axes.values()))
     rows = []
-    for combo in itertools.product(*axes.values()):
+    for combo in combos:
         params = dict(zip(keys, combo))
         trace = preprocess(recording.signal, recording.control,
                            recording.time_s, recording.fs, **params)
@@ -344,10 +499,12 @@ def multiverse(recording, axes=None, *, metric="mean",
         # it does not grow with the number of events, so a tiny effect measured
         # over many trials cannot masquerade as a strong one.
         d = mean / sd if sd > 0 else np.nan
+        is_mine = bool(my_pipeline) and all(params[k] == v for k, v in my_pipeline.items())
         rows.append({**params, "effect": mean, "d": float(d), "n_events": int(len(vals)),
-                     "t": float(t), "p": float(p), "sig": bool(p < 0.05)})
+                     "t": float(t), "p": float(p), "sig": bool(p < 0.05),
+                     "mine": is_mine})
     rows.sort(key=lambda r: r["t"])
-    return MultiverseResult(rows, keys, recording, metric=metric,
+    return MultiverseResult(rows, keys, recording, my_pipeline=my_pipeline, metric=metric,
                             baseline=baseline, response=response, pre=pre, post=post)
 
 
