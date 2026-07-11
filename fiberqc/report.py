@@ -37,9 +37,12 @@ def _prompt(result):
     return f"""Interpret this multiverse (specification-curve) analysis for the researcher.
 
 Dataset: {s['dataset']}
-Downstream metric: {mname} (response window {result.response} s vs baseline {result.baseline} s), tested per event against zero with a one-sample t-test.
+Downstream metric: {mname} (response window {result.response} s vs baseline {result.baseline} s), tested per event against zero with a one-sample t-test over {result.rows[0]['n_events']} events.
 Specifications: {s['n_pipelines']} pipelines. Significant (p<0.05): {s['n_significant']}/{s['n_pipelines']}. Verdict: {s['verdict']}.
-t-statistic range: {s['t_min']} to {s['t_max']} (largest p-value: {p_max:.1e}).
+EFFECT SIZE (the magnitude of the finding): raw effect {s['effect_min']:.4g} to {s['effect_max']:.4g} in metric units; Cohen's d {s['d_min']} to {s['d_max']}.
+Evidence (t-statistic): {s['t_min']} to {s['t_max']} (largest p-value: {p_max:.1e}).
+Do the pipelines agree on the DIRECTION of the effect? {'yes' if s['signs_agree'] else 'NO - some pipelines find a significant increase and others a significant decrease'}.
+Note: t = d * sqrt(n), so a large t can come from many events rather than a large effect. Lead with the effect size, treat t as the evidence for it, and say plainly if the magnitude is small.
 How much each choice moves the effect (t spread if you flip only that axis):
 {axis_lines}
 

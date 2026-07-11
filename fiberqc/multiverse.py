@@ -62,22 +62,50 @@ class MultiverseResult:
         return sum(r["sig"] for r in self.rows)
 
     @property
+    def signs_agree(self):
+        """Do all significant pipelines agree on the direction of the effect?
+
+        A specification where half the pipelines find a significant increase and
+        half a significant decrease is maximally choice-sensitive, not robust —
+        so the sign has to be part of the verdict, not just the p-value.
+        """
+        signs = {np.sign(r["t"]) for r in self.rows if r["sig"]}
+        return len(signs) <= 1
+
+    @property
     def verdict(self):
-        if self.n_significant == self.n:
-            return "ROBUST"
         if self.n_significant == 0:
             return "NULL"
-        return "FLIP"
+        if not self.signs_agree:
+            return "FLIP"          # significant in both directions
+        if self.n_significant == self.n:
+            return "ROBUST"
+        return "FLIP"              # significant in some pipelines, not others
 
     @property
     def t_range(self):
         ts = [r["t"] for r in self.rows]
         return (min(ts), max(ts))
 
+    @property
+    def effect_range(self):
+        es = [r["effect"] for r in self.rows]
+        return (min(es), max(es))
+
+    @property
+    def d_range(self):
+        ds = [r["d"] for r in self.rows if not np.isnan(r["d"])]
+        return (min(ds), max(ds)) if ds else (np.nan, np.nan)
+
     def summary(self):
         lo, hi = self.t_range
+        elo, ehi = self.effect_range
+        dlo, dhi = self.d_range
         return {"dataset": self.recording.name, "n_pipelines": self.n,
                 "n_significant": self.n_significant, "verdict": self.verdict,
+                "signs_agree": self.signs_agree,
+                "effect_min": elo, "effect_max": ehi,
+                "d_min": round(dlo, 3), "d_max": round(dhi, 3),
                 "t_min": round(lo, 2), "t_max": round(hi, 2)}
 
     def to_df(self):
@@ -93,13 +121,22 @@ class MultiverseResult:
 
     def __repr__(self):
         lo, hi = self.t_range
+        dlo, dhi = self.d_range
+        warn = "" if self.signs_agree else ", SIGN FLIPS"
         return (f"MultiverseResult({self.recording.name!r}: {self.verdict}, "
-                f"{self.n_significant}/{self.n} significant, t={lo:.1f}-{hi:.1f})")
+                f"{self.n_significant}/{self.n} significant, "
+                f"d={dlo:.2f}..{dhi:.2f}, t={lo:.1f}..{hi:.1f}{warn})")
 
     # -- specification curve ----------------------------------------------
     def spec_curve(self, path="spec_curve.png"):
-        """Save a specification curve: every pipeline's effect, sorted, with the
-        choices that produced each shown below. The classic multiverse plot.
+        """Save a specification curve: every pipeline's **effect size**, sorted,
+        with the choices that produced it shown below.
+
+        The magnitude is the top panel, not the t-statistic. A t-statistic mixes
+        magnitude with variability and grows with the number of events, so a
+        trivially small effect measured over many trials can look overwhelming
+        (Chen et al., 2017). The t-statistic is still shown, in its own panel,
+        as the evidence *for* the effect — not as the effect.
 
         Parameters
         ----------
@@ -115,21 +152,43 @@ class MultiverseResult:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        rows = sorted(self.rows, key=lambda r: r["t"])
+        rows = sorted(self.rows, key=lambda r: r["d"])
         x = np.arange(len(rows))
+        ds = np.array([r["d"] for r in rows])
+        eff = np.array([r["effect"] for r in rows])
         ts = np.array([r["t"] for r in rows])
         sig = np.array([r["sig"] for r in rows])
         options = [(k, v) for k in self.keys for v in sorted({r[k] for r in rows}, key=str)]
 
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True,
-                                       gridspec_kw={"height_ratios": [2, 3]})
-        ax1.axhline(1.98, color="gray", ls="--", lw=1, label="p=.05")
-        ax1.scatter(x[sig], ts[sig], c="#1a7f37", s=40, label="significant", zorder=3)
-        ax1.scatter(x[~sig], ts[~sig], c="#cf222e", s=40, label="not significant", zorder=3)
-        ax1.set_ylabel("effect (t-statistic)")
-        ax1.set_title(f"Specification curve — {self.recording.name} ({self.verdict})")
-        ax1.legend(loc="upper left", fontsize=9)
+        fig, (ax0, ax1, ax2) = plt.subplots(
+            3, 1, figsize=(10, 10), sharex=True,
+            gridspec_kw={"height_ratios": [2, 1.4, 3]})
 
+        # -- magnitude (the headline)
+        ax0.axhline(0, color="gray", lw=1)
+        ax0.scatter(x[sig], ds[sig], c="#1a7f37", s=42, label="p < .05", zorder=3)
+        ax0.scatter(x[~sig], ds[~sig], c="#cf222e", s=42, label="not significant", zorder=3)
+        ax0.set_ylabel("effect size (Cohen's d)")
+        flip = "" if self.signs_agree else "  —  SIGN FLIPS ACROSS PIPELINES"
+        ax0.set_title(f"Specification curve — {self.recording.name} "
+                      f"({self.verdict}){flip}", fontsize=11)
+        ax0.legend(loc="upper left", fontsize=9)
+
+        # raw magnitude on a twin axis so the units are not lost
+        ax0b = ax0.twinx()
+        ax0b.plot(x, eff, color="#8250df", lw=1, alpha=0.55)
+        ax0b.set_ylabel("raw effect (metric units)", color="#8250df", fontsize=9)
+        ax0b.tick_params(axis="y", labelcolor="#8250df", labelsize=8)
+
+        # -- evidence, kept separate from magnitude
+        ax1.axhline(0, color="gray", lw=1)
+        ax1.axhline(1.98, color="gray", ls="--", lw=0.8)
+        ax1.axhline(-1.98, color="gray", ls="--", lw=0.8)
+        ax1.scatter(x[sig], ts[sig], c="#1a7f37", s=26, zorder=3)
+        ax1.scatter(x[~sig], ts[~sig], c="#cf222e", s=26, zorder=3)
+        ax1.set_ylabel("evidence (t)", fontsize=9)
+
+        # -- which choices produced each specification
         for row_i, (k, v) in enumerate(options):
             used = np.array([rows[c][k] == v for c in range(len(rows))])
             ax2.scatter(x[used], np.full(used.sum(), row_i), c="#24292f", s=22)
@@ -196,7 +255,9 @@ class MultiverseResult:
             plt.xlabel("Time from event (s)"); plt.ylabel("signal")
             plt.tight_layout(); plt.savefig(png, dpi=110); plt.close()
 
-            manifest.append({**params, "metric": mname, "t": round(r["t"], 4),
+            manifest.append({**params, "metric": mname,
+                             "effect": r["effect"], "d": round(r["d"], 4),
+                             "n_events": r["n_events"], "t": round(r["t"], 4),
                              "p": r["p"], "sig": r["sig"],
                              "values_file": amp_path, "plot_file": png})
 
@@ -277,7 +338,13 @@ def multiverse(recording, axes=None, *, metric="mean",
         vals = _metrics.compute(metric, trace, recording.time_s, recording.events,
                                 baseline, response, pre, post)
         t, p = ttest_1samp(vals, 0.0)
-        rows.append({**params, "effect": float(np.mean(vals)),
+        sd = float(np.std(vals, ddof=1))
+        mean = float(np.mean(vals))
+        # Cohen's d: the magnitude in units of between-event variability. Unlike t
+        # it does not grow with the number of events, so a tiny effect measured
+        # over many trials cannot masquerade as a strong one.
+        d = mean / sd if sd > 0 else np.nan
+        rows.append({**params, "effect": mean, "d": float(d), "n_events": int(len(vals)),
                      "t": float(t), "p": float(p), "sig": bool(p < 0.05)})
     rows.sort(key=lambda r: r["t"])
     return MultiverseResult(rows, keys, recording, metric=metric,

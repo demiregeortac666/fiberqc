@@ -105,6 +105,25 @@ def test_verdict_logic_from_rows(clean_recording):
     assert mixed.verdict == "FLIP"
 
 
+def test_opposite_signs_are_not_robust(clean_recording):
+    """Regression: half the pipelines finding a significant INCREASE and half a
+    significant DECREASE is the most choice-sensitive outcome there is, but the
+    old verdict only counted p-values and called it ROBUST. Found on real
+    DANDI:001340 data, where the bleaching method flipped the sign of the
+    dopamine reward response (double_exp t=+13.7, highpass t=-5.6)."""
+    keys = ["bleaching"]
+    rows = [
+        {"bleaching": "double_exp", "effect": 0.005, "t": +13.7, "p": 1e-33, "sig": True},
+        {"bleaching": "double_exp", "effect": 0.004, "t": +12.3, "p": 1e-28, "sig": True},
+        {"bleaching": "highpass",   "effect": -0.004, "t": -5.6, "p": 4e-08, "sig": True},
+        {"bleaching": "highpass",   "effect": -0.003, "t": -4.2, "p": 4e-05, "sig": True},
+    ]
+    r = fqc.MultiverseResult(rows, keys, clean_recording)
+    assert r.n_significant == 4          # every pipeline is "significant"...
+    assert not r.signs_agree             # ...but they disagree on the direction
+    assert r.verdict == "FLIP"           # so it must NOT be called ROBUST
+
+
 # --------------------------------------------------------------- flexibility
 def test_all_builtin_metrics_run(clean_recording):
     for m in ("mean", "peak", "auc"):
@@ -188,3 +207,75 @@ def test_robust_motion_runs(clean_recording):
     r = fqc.multiverse(clean_recording, axes=axes)
     assert r.n == 2
     assert r.verdict in ("ROBUST", "FLIP", "NULL")
+
+
+# --------------------------------------------------------------- sampling gaps
+def _gappy_csv(tmp_path):
+    """A recording interrupted by a 140 s gap, like the real DANDI:001340 data."""
+    import pandas as pd
+    fs = 30.5
+    t1 = np.arange(0, 400, 1 / fs)                    # 400 s block
+    t2 = np.arange(540, 5000, 1 / fs)                 # resumes 140 s later
+    t = np.concatenate([t1, t2])
+    rng = np.random.default_rng(11)
+    sig = 1 + 0.05 * rng.standard_normal(len(t))
+    ctl = 1 + 0.05 * rng.standard_normal(len(t))
+    p = tmp_path / "gappy.csv"
+    pd.DataFrame({"time": t, "signal": sig, "control": ctl}).to_csv(p, index=False)
+    return str(p), t
+
+
+def test_gap_is_detected_and_longest_segment_kept(tmp_path):
+    """Regression: load() used to accept a gappy recording silently and hand it to
+    filters that assume uniform sampling. Found on real DANDI:001340 data, where a
+    140 s LED-off gap rang through a 0.001 Hz high-pass and inverted the response."""
+    path, t = _gappy_csv(tmp_path)
+    with pytest.warns(UserWarning, match="not uniform"):
+        rec = fqc.load(path)
+    # the 4460 s segment must be kept, not the 400 s one, and not the whole array
+    assert rec.time_s[-1] - rec.time_s[0] > 4000
+    assert len(rec.signal) < len(t)
+    assert np.max(np.diff(rec.time_s)) < 1.0          # no gap left inside
+
+
+def test_gap_can_raise(tmp_path):
+    path, _ = _gappy_csv(tmp_path)
+    with pytest.raises(ValueError, match="not uniform"):
+        fqc.load(path, on_gaps="raise")
+
+
+def test_gap_events_outside_segment_are_dropped(tmp_path):
+    path, _ = _gappy_csv(tmp_path)
+    events = np.array([100.0, 200.0, 1000.0, 2000.0, 3000.0])   # 2 in the short block
+    with pytest.warns(UserWarning):
+        rec = fqc.load(path, events=events)
+    assert len(rec.events) == 3                        # only the ones in the long segment
+    assert rec.events.min() >= 540
+
+
+# ------------------------------------------------------- effect size vs t-stat
+def test_effect_size_is_reported_not_just_t(clean_recording):
+    """Regression: the tool used to expose only the t-statistic. t mixes magnitude
+    with variability and grows with sqrt(n), so a trivially small effect measured
+    over many events looks as convincing as a large one (Chen et al., 2017).
+    Every row must carry the raw effect, Cohen's d, and the event count."""
+    r = fqc.multiverse(clean_recording, axes=_OLS_AXES)
+    for row in r.rows:
+        assert "effect" in row and "d" in row and "n_events" in row
+    s = r.summary()
+    for k in ("effect_min", "effect_max", "d_min", "d_max"):
+        assert k in s
+    assert "d=" in repr(r)          # magnitude is visible without opening the table
+
+
+def test_t_is_d_times_sqrt_n(clean_recording):
+    """t = d * sqrt(n). This identity is *why* the t-statistic is not an effect
+    size: it is the effect size multiplied by the square root of the event count.
+    Two recordings with the same d but 10x the events differ 3.2x in t while the
+    finding is identical (Chen et al., 2017). Reporting d alongside t is what
+    keeps that visible."""
+    r = fqc.multiverse(clean_recording, axes=_OLS_AXES)
+    for row in r.rows:
+        expected_t = row["d"] * np.sqrt(row["n_events"])
+        assert np.isclose(row["t"], expected_t, rtol=1e-6), (
+            f"t={row['t']:.4f} but d*sqrt(n)={expected_t:.4f}")
