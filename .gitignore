@@ -208,3 +208,4 @@ variants/
 build/
 dist/docs/_build/
 docs/generated/
+.DS_Store
