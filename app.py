@@ -12,14 +12,16 @@ import os
 import tempfile
 import warnings
 
+import matplotlib
+matplotlib.use("Agg")          # must precede any pyplot import: Streamlit is
+                               # multi-threaded and the GUI backend segfaults there
+
 import numpy as np
 import streamlit as st
 
 import fiberqc as fqc
 
-st.set_page_config(page_title="fiberqc", page_icon="logo-mark.svg"
-                   if os.path.exists("logo-mark.svg") else "🔬",
-                   layout="wide")
+st.set_page_config(page_title="fiberqc", layout="wide")
 
 # ----------------------------------------------------------------- style
 st.markdown("""
@@ -91,11 +93,11 @@ with st.sidebar:
     pre_win = st.slider("Baseline window (s before event)", -5.0, 0.0, -1.0, 0.5)
     post_win = st.slider("Response window (s after event)", 0.5, 5.0, 2.0, 0.5)
 
-    run = st.button("Run the multiverse", type="primary", use_container_width=True)
+    run = st.button("Run the multiverse", type="primary", width="stretch")
 
 
 # ----------------------------------------------------------------- loading
-@st.cache_data(show_spinner=False)
+# @st.cache_data(show_spinner=False)
 def _load(kind, rec_bytes=None, ev_bytes=None, rec_name=None, ev_name=None):
     """Returns (Recording, list_of_warnings)."""
     with warnings.catch_warnings(record=True) as caught:
@@ -109,14 +111,67 @@ def _load(kind, rec_bytes=None, ev_bytes=None, rec_name=None, ev_name=None):
         else:
             d = tempfile.mkdtemp()
             rp = os.path.join(d, rec_name)
-            open(rp, "wb").write(rec_bytes)
+            with open(rp, "wb") as f:
+                f.write(rec_bytes)
             ep = None
             if ev_bytes is not None:
                 ep = os.path.join(d, ev_name)
-                open(ep, "wb").write(ev_bytes)
+                with open(ep, "wb") as f:
+                    f.write(ev_bytes)
             rec = fqc.load(rp, events=ep)
-        msgs = [str(w.message) for w in caught]
+        # only surface warnings about the data, not Python housekeeping
+        msgs = [str(w.message) for w in caught
+                if issubclass(w.category, UserWarning)]
     return rec, msgs
+
+
+
+
+# ------------------------------------------------------------------ Claude
+# The anthropic client sets up an httpx/SSL context that segfaults inside
+# Streamlit's worker threads on macOS. Running it in a clean subprocess keeps
+# it completely out of Streamlit's threading model.
+import json
+import subprocess
+import sys
+
+
+def _claude(kind, result, question=None):
+    payload = {
+        "kind": kind,
+        "question": question,
+        "rows": result.rows,
+        "keys": result.keys,
+        "name": result.recording.name,
+        "metric": result.metric if isinstance(result.metric, str) else "custom",
+        "baseline": list(result.baseline),
+        "response": list(result.response),
+        "my_pipeline": result.my_pipeline,
+    }
+    code = r"""
+import json, sys
+import numpy as np
+import fiberqc as fqc
+from fiberqc.multiverse import MultiverseResult
+
+p = json.load(sys.stdin)
+rec = fqc.Recording(signal=np.zeros(2), control=np.zeros(2),
+                    time_s=np.arange(2, dtype=float), fs=1.0,
+                    events=None, name=p["name"])
+res = MultiverseResult(p["rows"], p["keys"], rec,
+                       my_pipeline=p["my_pipeline"], metric=p["metric"],
+                       baseline=tuple(p["baseline"]),
+                       response=tuple(p["response"]))
+out = res.ask(p["question"]) if p["kind"] == "ask" else res.report()
+sys.stdout.write(out)
+"""
+    proc = subprocess.run([sys.executable, "-c", code],
+                          input=json.dumps(payload), capture_output=True,
+                          text=True, timeout=120)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip().splitlines()[-1]
+                           if proc.stderr.strip() else "Claude call failed")
+    return proc.stdout
 
 
 rec, load_warnings = None, []
@@ -206,7 +261,7 @@ tab_curve, tab_table, tab_ask = st.tabs(
 with tab_curve:
     path = os.path.join(tempfile.mkdtemp(), "spec.png")
     result.spec_curve(path)
-    st.image(path, use_container_width=True)
+    st.image(path, width="stretch")
     st.caption("Each dot is one complete analysis. The effect size leads; the "
                "t-statistic is shown as the evidence for it, not as the effect. "
                "The highlighted axis is the choice your conclusion hangs on.")
@@ -219,7 +274,7 @@ with tab_table:
     shown = df.rename(columns={"d": "Cohen's d", "sig": "significant",
                                "mine": "your pipeline"})
     st.dataframe(
-        shown, use_container_width=True, hide_index=True,
+        shown, width="stretch", hide_index=True,
         column_config={
             "effect": st.column_config.NumberColumn("effect", format="%.4f"),
             "Cohen's d": st.column_config.NumberColumn("Cohen's d", format="%.2f"),
@@ -250,10 +305,16 @@ with tab_ask:
                 st.markdown(q)
             with st.chat_message("assistant"):
                 with st.spinner("Thinking…"):
-                    a = result.ask(q)
+                    try:
+                        a = _claude("ask", result, q)
+                    except Exception as e:
+                        a = f"Could not reach Claude: {e}"
                 st.markdown(a)
             st.session_state["chat"].append(("assistant", a))
 
         if st.button("Write the methods paragraph and reviewer statement"):
             with st.spinner("Writing…"):
-                st.markdown(result.report())
+                try:
+                    st.markdown(_claude("report", result))
+                except Exception as e:
+                    st.error(f"Could not reach Claude: {e}")
