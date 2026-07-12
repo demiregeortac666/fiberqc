@@ -194,9 +194,28 @@ def test_preprocess_options_finite(clean_recording, bleaching, normalization):
 def test_to_df_has_expected_columns(clean_recording):
     r = fqc.multiverse(clean_recording, axes=_OLS_AXES)
     df = r.to_df()
-    for col in ("t", "p", "sig", "effect"):
+    for col in ("t", "p", "sig", "effect", "d", "n_events", "my_pipeline"):
         assert col in df.columns
     assert len(df) == r.n
+
+
+def test_to_df_leads_with_the_deciding_axis(clean_recording):
+    """The table should show the split, not hide it: the axis that moves the
+    result most comes first, and the rows are ordered by effect size."""
+    r = fqc.multiverse(clean_recording, axes=_OLS_AXES)
+    df = r.to_df()
+    culprit, _ = r.culprit
+    assert df.columns[0] == culprit
+    assert list(df["d"]) == sorted(df["d"])
+
+
+def test_to_df_marks_the_declared_pipeline(clean_recording):
+    mine = {"low_pass": 2.0, "bleaching": "double_exp",
+            "motion": "OLS", "normalization": "dFF"}
+    df = fqc.multiverse(clean_recording, axes=_OLS_AXES, my_pipeline=mine).to_df()
+    assert df["my_pipeline"].sum() == 1          # exactly one row is the researcher's
+    row = df[df["my_pipeline"]].iloc[0]
+    assert row["bleaching"] == "double_exp"
 
 
 # --------------------------------------------------------------- robust (needs statsmodels)

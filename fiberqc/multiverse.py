@@ -165,8 +165,28 @@ class MultiverseResult:
                 "t_min": round(lo, 2), "t_max": round(hi, 2)}
 
     def to_df(self):
+        """Every pipeline as a table, ordered by effect size.
+
+        The axis that decides the result comes first, so the split is visible in
+        the table itself rather than only in the figure. ``my_pipeline`` marks the
+        specification the researcher declared.
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
         import pandas as pd
-        return pd.DataFrame(self.rows)
+
+        df = pd.DataFrame(self.rows).rename(columns={"mine": "my_pipeline"})
+        if "my_pipeline" not in df.columns:
+            df["my_pipeline"] = False
+
+        culprit_axis, _ = self.culprit
+        rest = [k for k in self.keys if k != culprit_axis]
+        stats = ["effect", "d", "t", "p", "sig", "n_events"]
+        order = ([culprit_axis] + rest
+                 + [c for c in stats if c in df.columns] + ["my_pipeline"])
+        return df[order].sort_values("d").reset_index(drop=True)
 
     def to_csv(self, path):
         with open(path, "w", newline="") as f:
@@ -271,7 +291,10 @@ class MultiverseResult:
                           label="significant, negative"),
                    Line2D([], [], marker="o", ls="", mfc=NS, mec="white", ms=8,
                           label="not significant")]
-        ax0.legend(handles=handles, loc="upper left", frameon=False, fontsize=8.5)
+        ax0.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.17),
+                   ncol=3, frameon=False, fontsize=8.5, handletextpad=.3,
+                   columnspacing=1.6)
+        ax0.margins(y=0.16)          # keep points clear of the frame
 
         title = f"{self.recording.name}  —  {self.verdict}"
         ax0.set_title(title, fontsize=12.5, color=INK, loc="left", pad=34,
